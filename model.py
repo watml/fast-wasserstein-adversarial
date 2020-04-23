@@ -1,13 +1,9 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+
 import torchvision
 
-import sys
-sys.path.append('./pytorch-cifar')
-sys.path.append('./pytorch-cifar/models')
-
-from models import *
+from resnet import ResNet18
 
 
 class Flatten(nn.Module):
