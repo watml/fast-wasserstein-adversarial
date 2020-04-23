@@ -1,0 +1,8 @@
+__pycache__/*
+data/*
+adversarial_examples/*
+checkpoints/*
+exp/*
+script/*
+slurm/*
+output/*
