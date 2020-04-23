@@ -8,7 +8,9 @@ import random
 
 import argparse
 
-from str2bool import str2bool
+
+def str2bool(x):
+    return bool(x)
 
 
 def str_or_none(x):
