@@ -179,6 +179,9 @@ if __name__ == "__main__":
 
     net = str2model(args.checkpoint, dataset=args.dataset, pretrained=True).eval().to(device)
 
+    for param in net.parameters():
+        param.requires_grad = False
+
     sinkhorn = Sinkhorn(predict=lambda x: net(normalize(x)),
                         loss_fn=nn.CrossEntropyLoss(reduction="sum"),
                         eps=args.eps,

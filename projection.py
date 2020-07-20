@@ -186,7 +186,7 @@ def dual_capacity_constrained_projection(G, X, cost, eps, transpose_idx, detrans
         lam = bisection_search(lambda x: grad(x, mu)[0],
                                left,
                                right,
-                               max_iter=30,
+                               max_iter=40,
                                grad_tol=1e-4,
                                int_tol=1e-4,
                                verbose=False)[0]
@@ -194,8 +194,11 @@ def dual_capacity_constrained_projection(G, X, cost, eps, transpose_idx, detrans
 
     for i in range(5000):
 
-        if i % 10 == 0:
+        if i <= 2000 and i % 20 == 0:
             lam = get_lam(mu)
+        elif i > 2000 and i % 10 == 0:
+            lam = get_lam(mu)
+
 
         # if i <= 2500 and i % 10 == 0:
             # lam = get_lam(mu)
@@ -204,8 +207,22 @@ def dual_capacity_constrained_projection(G, X, cost, eps, transpose_idx, detrans
 
         d_mu = grad(lam, mu)[1]
 
-        if verbose and ((i + 1) % 10 == 0):
-            print("iter {:5d}".format(i + 1),
+        if i <= 1000:
+            eta = 0.1
+        elif i <= 3000:
+            eta = 1e-2
+        else:
+            eta = 1e-3
+
+        gamma = 0.9
+
+        mu_y = (mu + eta * d_mu).clamp(min=0.)
+        mu = (1 + gamma) * mu_y - gamma * mu_y_prev
+
+        mu_y_prev = mu_y
+
+        if verbose and i % 10 == 0:
+            print("iter {:5d}".format(i),
                   # "d_lam max {:11.8f}".format(d_lam.max().item()),
                   "d_mu max {:11.8f}".format(d_mu.max().item()),
                   # "d_lam min {:11.8f}".format(d_lam.min().item()),
@@ -214,34 +231,12 @@ def dual_capacity_constrained_projection(G, X, cost, eps, transpose_idx, detrans
             print(lam)
             print(mu.max())
 
-        if i <= 1000:
-            eta = 0.1
-        elif i <= 4000:
-            eta = 1e-2
-        else:
-            eta = 1e-2
-
-        gamma = 0.9
-
-        # mu_tmp = mu
-
-        # mu = mu + eta * d_mu + gamma * (mu - mu_prev)
-
-        # mu_prev = mu_tmp
-
-        # mu = mu.clamp(min=0.)
-
-        mu_y = (mu + eta * d_mu).clamp(min=0.)
-        mu = (1 + gamma) * mu_y - gamma * mu_y_prev
-
-        mu_y_prev = mu_y
-
     # up-weight lambda slightly to ensure the transportation cost constraint
     # pi_tilde = recover(lam + 1e-4, mu)
 
     mu = mu_y
 
-    lam = get_lam(mu)
+    # lam = get_lam(mu)
 
     pi_tilde = recover(lam, mu)
 
@@ -295,12 +290,3 @@ def dykstra_projection(pi, X, cost, inf, eps, dykstra_max_iter, return_trajector
         return pi_half
     else:
         return pi_half, lst_pi_half, lst_pi_simp
-
-
-# def interpolate(self, pi0, pi1):
-#     """Return a convex combination of pi0 and pi1
-#     assume that pi0 is the identity coupling
-#     """
-#     lam = (self.eps / (pi1 * self.cost).sum(dim=(1, 2, 3))).clamp(max=1.0)
-
-#     return lam.view(-1, 1, 1, 1) * pi1 + (1 - lam).view(-1, 1, 1, 1) * pi0

@@ -1,10 +1,9 @@
-import math
 
-import torch
+import random
 
 import numpy as np
 
-import random
+import torch
 
 import argparse
 
@@ -62,10 +61,9 @@ def get_wasserstein_attack_parser():
 
 
 def set_seed(seed):
-    if seed is not None:
-        torch.manual_seed(seed)
-        np.random.seed(seed)
-        random.seed(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
 
 
 def test(net, loader, device, attacker, num_batch, save_img_loc=None):
@@ -198,10 +196,10 @@ def check_hypercube(adv_example, tol=None, verbose=True):
         assert(((adv_example - 1.).clamp(min=0.).sum(dim=(1, 2, 3)) / adv_example.sum(dim=(1, 2, 3))).max().item() < tol)
 
 
-def unsqueeze3(tensor):
-    assert 0
-    """Receive a tensor of size (len, ) and reshape it to (len, 1, 1, 1)"""
-    return tensor.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+# def unsqueeze3(tensor):
+#     assert 0
+#     """Receive a tensor of size (len, ) and reshape it to (len, 1, 1, 1)"""
+#     return tensor.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
 
 
 def tensor_norm(tensor, p=2):
@@ -225,61 +223,6 @@ def tensor_norm(tensor, p=2):
         return tensor.abs().view(tensor.size(0), -1).max(dim=-1)[0]
     else:
         assert 0
-
-
-# def bgss(f, a, b, max_iter, tol, maximize=True, verbose=False):
-#     assert 0
-#     """
-#     Batch golden-section search for maximizing f
-#     Args:
-#         f: a batch of funtions to be maximized
-#         a: tensor of size (batch size, )
-#         b: tensor of size (batch size, )
-#     """
-#     assert (a < b).all()
-
-#     batch_size = a.size(0)
-
-#     gr = (math.sqrt(5) - 1) / 2
-#     c = b - (b - a) * gr
-#     d = a + (b - a) * gr
-
-#     eval_c = f(c)
-#     eval_d = f(d)
-
-#     for i in range(max_iter):
-#         idx = eval_c < eval_d if maximize else eval_c > eval_d
-
-#         a[idx] = c[idx]
-#         b[~idx] = d[~idx]
-
-#         c = b - (b - a) * gr
-#         d = a + (b - a) * gr
-
-#         # only make function calls to new sections
-#         eval_c[idx] = eval_d[idx]
-#         eval_d[~idx] = eval_c[~idx]
-
-#         to_eval = a.new_zeros(batch_size)
-#         to_eval[idx] = d[idx]
-#         to_eval[~idx] = c[~idx]
-
-#         func_val = f(to_eval)
-#         eval_d[idx] = func_val[idx]
-#         eval_c[~idx] = func_val[~idx]
-
-#         assert (a < b).all()
-
-#         if tol is not None and torch.max(b - a) < tol:
-#             break
-
-#         if verbose:
-#             print("bgss {:d}".format(i), f((a + b) / 2))
-
-#     if tol is not None and torch.max(b - a) > tol:
-#         print("WARNING: golden section search does not converge in {:d} iterations".format(max_iter))
-
-#     return b
 
 
 def bisection_search(grad_fn, a, b, max_iter, grad_tol, int_tol, verbose=False):
@@ -343,14 +286,14 @@ if __name__ == "__main__":
     print()
     print("expecting [0, 1, 2, 3, 4]")
 
-    print("----------test golden section search-----------")
-    maximizer = bgss(obj_fn,
-                     torch.zeros(5, dtype=torch.float),
-                     100 * torch.ones(5, dtype=torch.float),
-                     tol=1e-4,
-                     max_iter=20)
+    # print("----------test golden section search-----------")
+    # maximizer = bgss(obj_fn,
+    #                  torch.zeros(5, dtype=torch.float),
+    #                  100 * torch.ones(5, dtype=torch.float),
+    #                  tol=1e-4,
+    #                  max_iter=20)
 
-    print(maximizer)
+    # print(maximizer)
 
     print("----------test bisection search-----------")
     maximizer = bisection_search(grad_fn,
