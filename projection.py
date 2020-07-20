@@ -3,35 +3,15 @@ import torch
 
 from utils import tensor_norm
 
-from utils import _violation_nonnegativity, _check_nonnegativity
-from utils import _violation_marginal_constraint, _check_marginal_constraint
-from utils import _violation_transport_cost, _check_transport_cost
+# from utils import _violation_nonnegativity, _check_nonnegativity
+# from utils import _violation_marginal_constraint, _check_marginal_constraint
+# from utils import _violation_transport_cost, _check_transport_cost
 
 # from utils import bgss
 from utils import bisection_search
 
 
-def halfspace_projection(pi, cost, inf, eps):
-    """
-    Projection to a half space
-    pi: tensor of size (batch_size, channel, img_size, img_size)
-                    or (batch_size, channel, img_size, kernel_size^2)
-    cost: tensor of size (img_size, img_size)
-                      or (img_size, kernel_size ** 2)
-    inf: indicates the infinity entries in cost matrix
-    """
-    batch_size = pi.size(0)
-    c = pi.size(1)
-
-    pi -= torch.max((pi * cost).sum(dim=(1, 2, 3)) - eps,
-                    pi.new_zeros(batch_size)
-                    ).view(batch_size, 1, 1, 1) \
-        / (c * (cost * cost * (cost < inf)).sum()) * cost
-
-    pi *= (cost < inf)
-    return pi
-
-# def halfspace_projection(pi, cost, eps):
+# def halfspace_projection(pi, cost, inf, eps):
 #     """
 #     Projection to a half space
 #     pi: tensor of size (batch_size, channel, img_size, img_size)
@@ -46,8 +26,9 @@ def halfspace_projection(pi, cost, inf, eps):
 #     pi -= torch.max((pi * cost).sum(dim=(1, 2, 3)) - eps,
 #                     pi.new_zeros(batch_size)
 #                     ).view(batch_size, 1, 1, 1) \
-#         / (c * (cost * cost).sum()) * cost
+#         / (c * (cost * cost * (cost < inf)).sum()) * cost
 
+#     pi *= (cost < inf)
 #     return pi
 
 
@@ -87,11 +68,6 @@ def simplex_projection(pi, X):
     return torch.max(pi - theta.view(batch_size, c, img_size, 1),
                      pi.new_zeros((1, 1, 1, 1))
                      )
-
-# def dual(G, lam, X, cost, eps):
-#     pi_star = simplex_projection(G - lam.view(-1, 1, 1, 1) * cost, X)
-#     ret = 0.5 * ((pi_star - G) ** 2).sum(dim=(1, 2, 3)) + lam * ((pi_star * cost).sum(dim=(1, 2, 3)) - eps)
-#     return ret
 
 
 def dual_projection(G, X, cost, eps, dual_max_iter, grad_tol, int_tol):
@@ -156,11 +132,6 @@ def dual_capacity_constrained_projection(G, X, cost, eps, transpose_idx, detrans
     lam = X.new_ones(batch_size)
     mu = X.new_ones(X.size())
 
-    # v_lam = X.new_zeros(batch_size)
-    # v_mu = X.new_zeros(X.size())
-
-    # lam_prev = X.new_zeros(batch_size)
-    # mu_prev = X.new_zeros(X.size())
     mu_y_prev = X.new_zeros(X.size())
 
     def recover(lam, mu):
@@ -178,37 +149,27 @@ def dual_capacity_constrained_projection(G, X, cost, eps, transpose_idx, detrans
         d_mu = coupling2adversarial(pi_tilde, X) - X.new_ones(X.size())
         return d_lam, d_mu
 
-    def get_lam(mu):
+    def optimize_lam(mu):
         left = X.new_zeros(batch_size)
-        # right = 2 * tensor_norm(G, p='inf') + tensor_norm(X, p='inf')
-        right = 50 * X.new_ones(batch_size)
+        right = 2 * tensor_norm(G, p='inf') + 2 * tensor_norm(mu, p='inf') + tensor_norm(X, p='inf')
 
         lam = bisection_search(lambda x: grad(x, mu)[0],
                                left,
                                right,
-                               max_iter=40,
+                               max_iter=50,
                                grad_tol=1e-4,
                                int_tol=1e-4,
                                verbose=False)[0]
         return lam
 
     for i in range(5000):
-
-        if i <= 2000 and i % 20 == 0:
-            lam = get_lam(mu)
-        elif i > 2000 and i % 10 == 0:
-            lam = get_lam(mu)
-
-
-        # if i <= 2500 and i % 10 == 0:
-            # lam = get_lam(mu)
-        # elif 2500 <= i and i <= 3000 and i % 1 == 0:
-            # lam = get_lam(mu)
+        if i % 20 == 0:
+            lam = optimize_lam(mu)
 
         d_mu = grad(lam, mu)[1]
 
         if i <= 1000:
-            eta = 0.1
+            eta = 1e-1
         elif i <= 3000:
             eta = 1e-2
         else:
@@ -223,9 +184,7 @@ def dual_capacity_constrained_projection(G, X, cost, eps, transpose_idx, detrans
 
         if verbose and i % 10 == 0:
             print("iter {:5d}".format(i),
-                  # "d_lam max {:11.8f}".format(d_lam.max().item()),
                   "d_mu max {:11.8f}".format(d_mu.max().item()),
-                  # "d_lam min {:11.8f}".format(d_lam.min().item()),
                   "d_mu min {:11.8f}".format(d_mu.min().item()),
                   )
             print(lam)
@@ -236,57 +195,58 @@ def dual_capacity_constrained_projection(G, X, cost, eps, transpose_idx, detrans
 
     mu = mu_y
 
-    # lam = get_lam(mu)
+    """Run bisection method again to ensure strict feasibility of transportation cost constraint"""
+    lam = optimize_lam(mu)
 
     pi_tilde = recover(lam, mu)
 
     return pi_tilde
 
 
-def dykstra_projection(pi, X, cost, inf, eps, dykstra_max_iter, return_trajectory=True):
-    pi_simp = pi.new_zeros(pi.size())
-    pi_half = pi.new_zeros(pi.size())
-    q_simp = pi.new_zeros(pi.size())
-    q_half = pi.new_zeros(pi.size())
+# def dykstra_projection(pi, X, cost, inf, eps, dykstra_max_iter, return_trajectory=True):
+#     pi_simp = pi.new_zeros(pi.size())
+#     pi_half = pi.new_zeros(pi.size())
+#     q_simp = pi.new_zeros(pi.size())
+#     q_half = pi.new_zeros(pi.size())
 
-    pi_half = pi.clone().detach()
+#     pi_half = pi.clone().detach()
 
-    lst_pi_half = []
-    lst_pi_simp = []
+#     lst_pi_half = []
+#     lst_pi_simp = []
 
-    for t in range(dykstra_max_iter):
-        tmp_simp = pi_simp.clone()
-        pi_simp = simplex_projection(pi_half - q_simp, X)
+#     for t in range(dykstra_max_iter):
+#         tmp_simp = pi_simp.clone()
+#         pi_simp = simplex_projection(pi_half - q_simp, X)
 
-        _check_nonnegativity(pi_simp, tol=1e-4, verbose=False)
-        _check_marginal_constraint(pi_simp, X, tol=1e-4, verbose=False)
+#         _check_nonnegativity(pi_simp, tol=1e-4, verbose=False)
+#         _check_marginal_constraint(pi_simp, X, tol=1e-4, verbose=False)
 
-        q_simp = pi_simp - pi_half + q_simp
+#         q_simp = pi_simp - pi_half + q_simp
 
-        tmp_half = pi_half.clone()
-        pi_half = halfspace_projection(pi_simp - q_half, cost, inf, eps)
+#         tmp_half = pi_half.clone()
+#         pi_half = halfspace_projection(pi_simp - q_half, cost, inf, eps)
 
-        _check_transport_cost(pi_half, cost, eps, tol=eps * 1e-2, verbose=False)
+#         _check_transport_cost(pi_half, cost, eps, tol=eps * 1e-2, verbose=False)
 
-        q_half = pi_half - pi_simp + q_half
+#         q_half = pi_half - pi_simp + q_half
 
-        if tensor_norm(pi_simp - pi_half, p=1).max() < 1e-5:
-            break
+#         if tensor_norm(pi_simp - pi_half, p=1).max() < 1e-5:
+#             break
 
-        if t % 10 == 0:
-            max_transport_cost = (cost * pi_simp).sum(dim=(1, 2, 3)).max().item()
-            print("dykstra iteration {:d} transport cost {:.6f}".format(t + 1, max_transport_cost))
-            _check_marginal_constraint(pi_half, X, tol=100, verbose=True)
-            print("simp norm : {:.9f}".format(tensor_norm(tmp_simp - pi_simp, p=1).max().item()))
-            print("half norm : {:.9f}".format(tensor_norm(tmp_half - pi_half, p=1).max().item()))
-            print("simp half : {:.9f}".format(tensor_norm(pi_simp - pi_half, p=1).max().item()))
+#         if t % 10 == 0:
+#             max_transport_cost = (cost * pi_simp).sum(dim=(1, 2, 3)).max().item()
+#             print("dykstra iteration {:d} transport cost {:.6f}".format(t + 1, max_transport_cost))
+#             _check_marginal_constraint(pi_half, X, tol=100, verbose=True)
+#             print("simp norm : {:.9f}".format(tensor_norm(tmp_simp - pi_simp, p=1).max().item()))
+#             print("half norm : {:.9f}".format(tensor_norm(tmp_half - pi_half, p=1).max().item()))
+#             print("simp half : {:.9f}".format(tensor_norm(pi_simp - pi_half, p=1).max().item()))
 
 
-        if return_trajectory:
-            lst_pi_half.append(pi_half.clone().detach())
-            lst_pi_simp.append(pi_simp.clone().detach())
+#         if return_trajectory:
+#             lst_pi_half.append(pi_half.clone().detach())
+#             lst_pi_simp.append(pi_simp.clone().detach())
 
-    if return_trajectory is False:
-        return pi_half
-    else:
-        return pi_half, lst_pi_half, lst_pi_simp
+#     if return_trajectory is False:
+#         return pi_half
+#     else:
+#         return pi_half, lst_pi_half, lst_pi_simp

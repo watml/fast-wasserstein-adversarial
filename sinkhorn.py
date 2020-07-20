@@ -1,22 +1,14 @@
 import torch
 import torch.nn as nn
-import torch.optim as optim
-import torch.backends.cudnn as cudnn
 
-from projected_sinkhorn import conjugate_sinkhorn, projected_sinkhorn
-from projected_sinkhorn import wasserstein_cost
-from projected_sinkhorn import attack
+from data import str2dataset
+from model import str2model
+from utils import *
 
 from wasserstein_attack import WassersteinAttack
 
-from utils import test
-from utils import get_wasserstein_attack_parser
-from utils import set_seed
-from utils import tensor_norm
-
-from data import str2dataset
-
-from model import str2model, load_model
+from projected_sinkhorn import projected_sinkhorn
+from projected_sinkhorn import wasserstein_cost
 
 
 class Sinkhorn(WassersteinAttack):
@@ -24,56 +16,26 @@ class Sinkhorn(WassersteinAttack):
     def __init__(self,
                  predict, loss_fn,
                  eps, kernel_size,
-                 lr, nb_iter,
-                 lam, sinkhorn_max_iter,
-                 stop_abs, stop_rel,
+                 lr, nb_iter, lam, sinkhorn_max_iter, stop_abs, stop_rel,
                  device="cuda",
-                 clip_min=0., clip_max=1.,
-                 clipping=False,
                  postprocess=False,
                  verbose=True
                  ):
-        super().__init__(predict, loss_fn,
-                         eps, kernel_size,
-                         nb_iter,
-                         device,
-                         clip_min, clip_max,
-                         clipping=clipping,
+        super().__init__(predict=predict, loss_fn=loss_fn,
+                         eps=eps, kernel_size=kernel_size,
+                         device=device,
                          postprocess=postprocess,
                          verbose=verbose,
                          )
         self.lr = lr
+        self.nb_iter = nb_iter
         self.lam = lam
         self.sinkhorn_max_iter = sinkhorn_max_iter
         self.stop_abs = stop_abs
         self.stop_rel = stop_rel
 
-        self.adaptive = False
-
-        self.run_time = 0.0
-        self.num_iter = 0
-        self.func_calls = 0
-
     def perturb(self, X, y):
-        if self.adaptive:
-            assert 0
-            # return attack(X=X, y=y,
-            #               net=self.predict,
-            #               epsilon=0.1,
-            #               epsilon_iters=5,
-            #               epsilon_factor=1.4,
-            #               p=2,
-            #               kernel_size=self.kernel_size,
-            #               maxiters=50,
-            #               alpha=self.lr,
-            #               xmin=self.clip_min,
-            #               xmax=self.clip_max,
-            #               regularization=self.lam,
-            #               sinkhorn_maxiters=self.sinkhorn_max_iter,
-            #               ball='wasserstein', norm='linfinity',
-            #               verbose=5)[0]
-        else:
-            return self.perturb_fix(X, y)
+        return self.perturb_fix(X, y)
 
     def perturb_fix(self, X, y):
         batch_size = X.size(0)
@@ -135,29 +97,39 @@ class Sinkhorn(WassersteinAttack):
                           "dual iter : {:3d}, ".format(num_iter),
                           "per iter time : {:7.3f}ms".format(start.elapsed_time(end) / num_iter))
 
-                # X_ = torch.clamp(X_, min=self.clip_min, max=self.clip_max)
-
             X_ = X_.clone().detach().requires_grad_(True)
 
-        from utils import check_hypercube
         check_hypercube(X_, verbose=self.verbose)
 
-        if self.clipping:
-            return X_.clamp(min=self.clip_min, max=self.clip_max)
-        else:
-            return X_
+        return X_
 
 
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(parents=[get_wasserstein_attack_parser()])
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('--dataset', type=str, default='MNIST')
+    parser.add_argument('--checkpoint', type=str, default='mnist_vanilla')
+    parser.add_argument('--batch_size', type=int, default=20)
+    parser.add_argument('--num_batch', type=int_or_none, default=5)
+
+    parser.add_argument('--eps', type=float, default=0.5, help='the perturbation size')
+    parser.add_argument('--kernel_size', type=int_or_none, default=5)
 
     parser.add_argument('--lr', type=float, default=0.1, help='gradient step size')
+    parser.add_argument('--nb_iter', type=int, default=20)
     parser.add_argument('--lam', type=float, default=1000, help='entropic regularization constanst')
     parser.add_argument('--sinkhorn_max_iter', type=int, default=400)
     parser.add_argument('--stop_abs', type=float, default=1e-4)
     parser.add_argument('--stop_rel', type=float, default=1e-4)
+
+    parser.add_argument('--save_img_loc', type=str_or_none, default=None)
+    parser.add_argument('--save_info_loc', type=str_or_none, default=None)
+
+    parser.add_argument('--seed', type=int, default=0)
+    parser.add_argument('--postprocess', type=str2bool, default=False)
+
 
     args = parser.parse_args()
 
@@ -166,13 +138,6 @@ if __name__ == "__main__":
     device = "cuda"
 
     set_seed(args.seed)
-
-    # print(torch.backends.cudnn.version())
-
-    cudnn.enabled = True
-
-    if args.benchmark:
-        cudnn.benchmark = True
 
     testset, normalize, unnormalize = str2dataset(args.dataset)
     testloader = torch.utils.data.DataLoader(testset, batch_size=args.batch_size, shuffle=False, num_workers=0)
@@ -193,8 +158,6 @@ if __name__ == "__main__":
                         stop_abs=args.stop_abs,
                         stop_rel=args.stop_rel,
                         device=device,
-                        clip_min=0.0, clip_max=1.0,
-                        clipping=False,
                         postprocess=False,
                         verbose=True)
 

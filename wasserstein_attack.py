@@ -45,10 +45,7 @@ class WassersteinAttack(Attack):
     def __init__(self,
                  predict, loss_fn,
                  eps, kernel_size,
-                 nb_iter,
                  device,
-                 clip_min=0.0, clip_max=1.0,
-                 clipping=False,
                  postprocess=False,
                  verbose=True,
                  ):
@@ -56,33 +53,24 @@ class WassersteinAttack(Attack):
         Args:
             kernel_size (None or int): None indicates dense cost coupling
         """
-        super().__init__(predict, loss_fn, clip_min, clip_max)
+        super().__init__(predict, loss_fn, clip_min=0., clip_max=1.)
         self.eps = eps
         self.kernel_size = kernel_size
-        self.nb_iter = nb_iter
-
 
         self.device = device
 
-
         """post-processing parameters"""
-        self.clipping = clipping
         self.postprocess = postprocess
 
-
         self.cost = None
-
 
         """variables supporting sparse matrices operations"""
         self.cost_indices = None
         self.forward_idx = None
         self.backward_idx = None
 
-
         """other parameters"""
-        self.debug = True
         self.verbose = verbose
-
 
         """
         parameters for the ease of recording experimental results
@@ -96,7 +84,7 @@ class WassersteinAttack(Attack):
         self.func_calls = 0
 
 
-        """group 2: flags of projected Sinkhorn"""
+        """group 2: flags for projected Sinkhorn"""
         self.converge = True
         self.overflow = False
 
@@ -156,33 +144,13 @@ class WassersteinAttack(Attack):
             # return torch.sparse.sum(self.dense2sparse(pi, X), dim=2).to_dense().view(batch_size, c, h, w)
             return Coulping2adversarial.apply(pi, X.size(), self.forward_idx, self.backward_idx)
 
-    # def dense2sparse(self, dense, X):
-    #     """Convert a reduced dense representation into a coo representation"""
-    #     batch_size, c, h, w = X.size()
-    #     img_size = h * w
-    #     sparse_pi = torch.sparse_coo_tensor(indices=self.coupling_indices,
-    #                                         values=dense.view(-1),
-    #                                         size=(batch_size, c, img_size, img_size),
-    #                                         dtype=torch.float,
-    #                                         device=self.device)
-    #     return sparse_pi
-
     def check_nonnegativity(self, pi, tol=1e-4, verbose=False):
-        if not self.debug:
-            return
-
         _check_nonnegativity(pi=pi, tol=tol, verbose=verbose)
 
     def check_marginal_constraint(self, pi, X, tol=1e-4, verbose=False):
-        if not self.debug:
-            return
-
         _check_marginal_constraint(pi=pi, X=X, tol=tol, verbose=verbose)
 
     def check_transport_cost(self, pi, tol=1e-4, verbose=False):
-        if not self.debug:
-            return
-
         _check_transport_cost(pi=pi, cost=self.cost, eps=self.eps, tol=tol, verbose=verbose)
 
     def print_info(self, acc):

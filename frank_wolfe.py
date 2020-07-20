@@ -1,17 +1,13 @@
 import torch
 import torch.nn as nn
 
-import torch.backends.cudnn as cudnn
-
-from model import str2model, load_model
-
 from data import str2dataset
-
-from utils import test, get_wasserstein_attack_parser, tensor_norm, set_seed
-from utils import check_hypercube
+from model import str2model
+from utils import *
 
 from wasserstein_attack import WassersteinAttack
-from conjugate import entr_support_func
+from lmo import entr_support_func
+from projection import dual_capacity_constrained_projection
 
 
 class FrankWolfe(WassersteinAttack):
@@ -19,30 +15,22 @@ class FrankWolfe(WassersteinAttack):
     def __init__(self,
                  predict, loss_fn,
                  eps, kernel_size,
-                 nb_iter,
-                 entrp_gamma, dual_max_iter,
-                 grad_tol,
-                 int_tol,
+                 nb_iter, entrp_gamma, dual_max_iter, grad_tol, int_tol,
                  device="cuda",
-                 clip_min=0., clip_max=1.,
-                 clipping=False,
                  postprocess=False,
                  verbose=True,
                  ):
 
         super().__init__(predict=predict, loss_fn=loss_fn,
                          eps=eps, kernel_size=kernel_size,
-                         nb_iter=nb_iter,
                          device=device,
-                         clip_min=clip_min, clip_max=clip_max,
-                         clipping=clipping,
                          postprocess=postprocess,
                          verbose=verbose,
                          )
 
+        self.nb_iter = nb_iter
         self.entrp_gamma = entrp_gamma
         self.dual_max_iter = dual_max_iter
-
         self.grad_tol = grad_tol
         self.int_tol = int_tol
 
@@ -51,7 +39,7 @@ class FrankWolfe(WassersteinAttack):
     def perturb(self, X, y):
         batch_size, c, h, w = X.size()
 
-        self.cost = self.initialize_cost(X, inf=self.inf)
+        self.initialize_cost(X, inf=self.inf)
         pi = self.initialize_coupling(X).clone().detach().requires_grad_(True)
         normalization = X.sum(dim=(1, 2, 3), keepdim=True)
 
@@ -66,19 +54,16 @@ class FrankWolfe(WassersteinAttack):
                 self.lst_loss.append(loss.item())
                 self.lst_acc.append((scores.max(dim=1)[1] == y).sum().item())
 
-                gradient = pi.grad
-                """
-                # print("grad norm", tensor_norm(pi.grad, p='inf').min())
-                add a small constant to enhance numerical stability
-                """
-                gradient /= (tensor_norm(pi.grad, p='inf').view(batch_size, 1, 1, 1) + 1e-8)
+                """Add a small constant to enhance numerical stability"""
+                pi.grad /= (tensor_norm(pi.grad, p='inf').view(batch_size, 1, 1, 1) + 1e-35)
+                assert (pi.grad == pi.grad).all() and (pi.grad != float('inf')).all() and (pi.grad != float('-inf')).all()
 
                 start = torch.cuda.Event(enable_timing=True)
                 end = torch.cuda.Event(enable_timing=True)
 
                 start.record()
 
-                optimal_pi, num_iter = entr_support_func(gradient,
+                optimal_pi, num_iter = entr_support_func(pi.grad,
                                                          X,
                                                          cost=self.cost,
                                                          inf=self.inf,
@@ -122,7 +107,6 @@ class FrankWolfe(WassersteinAttack):
                 if self.verbose:
                     print("==========> post-processing projection........")
 
-                from projection import dual_capacity_constrained_projection
                 pi = dual_capacity_constrained_projection(pi,
                                                           X,
                                                           self.cost,
@@ -132,26 +116,39 @@ class FrankWolfe(WassersteinAttack):
                                                           coupling2adversarial=self.coupling2adversarial)
 
                 adv_example = self.coupling2adversarial(pi, X)
-                check_hypercube(adv_example, tol=self.eps * 5e-2, verbose=self.verbose)
+                check_hypercube(adv_example, tol=self.eps * 1e-1, verbose=self.verbose)
                 self.check_nonnegativity(pi / normalization, tol=1e-6, verbose=self.verbose)
                 self.check_marginal_constraint(pi / normalization, X / normalization, tol=1e-6, verbose=self.verbose)
                 self.check_transport_cost(pi / normalization, tol=self.eps * 1e-3, verbose=self.verbose)
 
-        if self.clipping:
-            return adv_example.clamp(min=self.clip_min, max=self.clip_max)
-        else:
-            return adv_example
+        """Do not clip the adversarial examples to preserve pixel mass"""
+        return adv_example
 
 
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(parents=[get_wasserstein_attack_parser()])
+    parser = argparse.ArgumentParser()
 
+    parser.add_argument('--dataset', type=str, default='MNIST')
+    parser.add_argument('--checkpoint', type=str, default='mnist_vanilla')
+    parser.add_argument('--batch_size', type=int, default=20)
+    parser.add_argument('--num_batch', type=int_or_none, default=5)
+
+    parser.add_argument('--eps', type=float, default=0.5, help='the perturbation size')
+    parser.add_argument('--kernel_size', type=int_or_none, default=5)
+
+    parser.add_argument('--nb_iter', type=int, default=20)
     parser.add_argument('--entrp_gamma', type=float, default=1e-6)
     parser.add_argument('--dual_max_iter', type=int, default=15)
     parser.add_argument('--grad_tol', type=float, default=1e-5)
     parser.add_argument('--int_tol', type=float, default=1e-5)
+
+    parser.add_argument('--seed', type=int, default=0)
+    parser.add_argument('--postprocess', type=str2bool, default=False)
+
+    parser.add_argument('--save_img_loc', type=str_or_none, default=None)
+    parser.add_argument('--save_info_loc', type=str_or_none, default=None)
 
     args = parser.parse_args()
 
@@ -160,9 +157,6 @@ if __name__ == "__main__":
     device = "cuda"
 
     set_seed(args.seed)
-
-    if args.benchmark:
-        cudnn.benchmark = True
 
     testset, normalize, unnormalize = str2dataset(args.dataset)
     testloader = torch.utils.data.DataLoader(testset, batch_size=args.batch_size, shuffle=False, num_workers=0)
@@ -182,8 +176,6 @@ if __name__ == "__main__":
                              grad_tol=args.grad_tol,
                              int_tol=args.int_tol,
                              device=device,
-                             clip_min=0., clip_max=1.,
-                             clipping=True,
                              postprocess=args.postprocess,
                              verbose=True)
 

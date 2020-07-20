@@ -1,20 +1,12 @@
 import torch
 import torch.nn as nn
 
-import torch.backends.cudnn as cudnn
-
-from model import str2model, load_model
-
 from data import str2dataset
-
-from utils import test, get_wasserstein_attack_parser, set_seed, tensor_norm
-from utils import float_or_none
-from utils import check_hypercube
+from model import str2model
+from utils import *
 
 from wasserstein_attack import WassersteinAttack
-from projection import dual_projection
-
-from projection import dual_capacity_constrained_projection
+from projection import dual_projection, dual_capacity_constrained_projection
 
 
 class ProjectedGradient(WassersteinAttack):
@@ -22,35 +14,27 @@ class ProjectedGradient(WassersteinAttack):
     def __init__(self,
                  predict, loss_fn,
                  eps, kernel_size,
-                 lr, nb_iter,
-                 dual_max_iter,
-                 grad_tol, int_tol,
+                 lr, nb_iter, dual_max_iter, grad_tol, int_tol,
                  device="cuda",
-                 clip_min=0., clip_max=1.,
-                 clipping=False,
                  postprocess=False,
                  verbose=True,
-                 capacity_proj_mod=-1,
                  ):
-        super().__init__(predict, loss_fn,
-                         eps, kernel_size,
-                         nb_iter,
-                         device,
-                         clip_min, clip_max,
-                         clipping=clipping,
+        super().__init__(predict=predict, loss_fn=loss_fn,
+                         eps=eps, kernel_size=kernel_size,
+                         device=device,
                          postprocess=postprocess,
                          verbose=verbose,
                          )
-        self.lr = lr
-        self.dual_max_iter = dual_max_iter
 
+        self.lr = lr
+        self.nb_iter = nb_iter
+        self.dual_max_iter = dual_max_iter
         self.grad_tol = grad_tol
         self.int_tol = int_tol
 
-        self.postprocess = postprocess
-        self.capacity_proj_mod = capacity_proj_mod
-
         self.inf = 1000000
+
+        # self.capacity_proj_mod = capacity_proj_mod
 
     def perturb(self, X, y):
         batch_size, c, h, w = X.size()
@@ -70,11 +54,11 @@ class ProjectedGradient(WassersteinAttack):
                 self.lst_loss.append(loss.item())
                 self.lst_acc.append((scores.max(dim=1)[1] == y).sum().item())
 
-                """
-                # pi.grad /= tensor_norm(pi.grad, p='inf').view(-1, 1, 1, 1)
-                add a small constant to enhance numerical stability
-                """
-                pi.grad /= (tensor_norm(pi.grad, p='inf').view(batch_size, 1, 1, 1) + 1e-8)
+                """Add a small constant to enhance numerical stability"""
+                # print(tensor_norm(pi.grad, p='inf').min())
+                pi.grad /= (tensor_norm(pi.grad, p='inf').view(batch_size, 1, 1, 1) + 1e-35)
+                assert (pi.grad == pi.grad).all() and (pi.grad != float('inf')).all() and (pi.grad != float('-inf')).all()
+
                 pi += self.lr * pi.grad
 
                 start = torch.cuda.Event(enable_timing=True)
@@ -82,24 +66,24 @@ class ProjectedGradient(WassersteinAttack):
 
                 start.record()
 
-                if self.capacity_proj_mod == -1:
-                    pi, num_iter = dual_projection(pi,
-                                                   X,
-                                                   cost=self.cost,
-                                                   eps=self.eps * normalization.squeeze(),
-                                                   dual_max_iter=self.dual_max_iter,
-                                                   grad_tol=self.grad_tol,
-                                                   int_tol=self.int_tol)
+                # if self.capacity_proj_mod == -1:
+                pi, num_iter = dual_projection(pi,
+                                               X,
+                                               cost=self.cost,
+                                               eps=self.eps * normalization.squeeze(),
+                                               dual_max_iter=self.dual_max_iter,
+                                               grad_tol=self.grad_tol,
+                                               int_tol=self.int_tol)
 
-                elif (t + 1) % self.capacity_proj_mod == 0:
-                    pi = dual_capacity_constrained_projection(pi,
-                                                              X,
-                                                              self.cost,
-                                                              eps=self.eps * normalization.squeeze(),
-                                                              transpose_idx=self.forward_idx,
-                                                              detranspose_idx=self.backward_idx,
-                                                              coupling2adversarial=self.coupling2adversarial)
-                    num_iter = 3000
+                # elif (t + 1) % self.capacity_proj_mod == 0:
+                #     pi = dual_capacity_constrained_projection(pi,
+                #                                               X,
+                #                                               self.cost,
+                #                                               eps=self.eps * normalization.squeeze(),
+                #                                               transpose_idx=self.forward_idx,
+                #                                               detranspose_idx=self.backward_idx,
+                #                                               coupling2adversarial=self.coupling2adversarial)
+                #     num_iter = 3000
 
                 end.record()
 
@@ -142,29 +126,41 @@ class ProjectedGradient(WassersteinAttack):
                                                           coupling2adversarial=self.coupling2adversarial)
 
                 adv_example = self.coupling2adversarial(pi, X)
-                check_hypercube(adv_example, tol=self.eps * 5e-2, verbose=self.verbose)
-
+                check_hypercube(adv_example, tol=self.eps * 1e-1, verbose=self.verbose)
                 self.check_nonnegativity(pi / normalization, tol=1e-6, verbose=self.verbose)
                 self.check_marginal_constraint(pi / normalization, X / normalization, tol=1e-6, verbose=self.verbose)
                 self.check_transport_cost(pi / normalization, tol=self.eps * 1e-3, verbose=self.verbose)
 
-        if self.clipping:
-            return adv_example.clamp(min=self.clip_min, max=self.clip_max)
-        else:
-            return adv_example
+        """Do not clip the adversarial examples to preserve pixel mass"""
+        return adv_example
 
 
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(parents=[get_wasserstein_attack_parser()])
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('--dataset', type=str, default='MNIST')
+    parser.add_argument('--checkpoint', type=str, default='mnist_vanilla')
+    parser.add_argument('--batch_size', type=int, default=20)
+    parser.add_argument('--num_batch', type=int_or_none, default=5)
+
+    parser.add_argument('--eps', type=float, default=0.5, help='the perturbation size')
+    parser.add_argument('--kernel_size', type=int_or_none, default=5)
 
     parser.add_argument('--lr', type=float, default=0.1, help='gradient step size')
+    parser.add_argument('--nb_iter', type=int, default=20)
     parser.add_argument('--dual_max_iter', type=int, default=15)
     parser.add_argument('--grad_tol', type=float_or_none, default=1e-4)
     parser.add_argument('--int_tol', type=float_or_none, default=1e-4)
 
-    parser.add_argument('--capacity_proj_mod', type=int, default=-1)
+    parser.add_argument('--save_img_loc', type=str_or_none, default=None)
+    parser.add_argument('--save_info_loc', type=str_or_none, default=None)
+
+    parser.add_argument('--seed', type=int, default=0)
+    parser.add_argument('--postprocess', type=str2bool, default=False)
+
+    # parser.add_argument('--capacity_proj_mod', type=int, default=-1)
 
     args = parser.parse_args()
 
@@ -173,9 +169,6 @@ if __name__ == "__main__":
     device = "cuda"
 
     set_seed(args.seed)
-
-    if args.benchmark:
-        cudnn.benchmark = True
 
     testset, normalize, unnormalize = str2dataset(args.dataset)
     testloader = torch.utils.data.DataLoader(testset, batch_size=args.batch_size, shuffle=False, num_workers=0)
@@ -195,11 +188,8 @@ if __name__ == "__main__":
                                            grad_tol=args.grad_tol,
                                            int_tol=args.int_tol,
                                            device=device,
-                                           clip_min=0.0, clip_max=1.0,
-                                           clipping=False,
                                            postprocess=args.postprocess,
-                                           verbose=True,
-                                           capacity_proj_mod=args.capacity_proj_mod)
+                                           verbose=True)
 
     acc = test(lambda x: net(normalize(x)),
                testloader,

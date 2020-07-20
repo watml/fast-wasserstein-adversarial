@@ -1,7 +1,7 @@
 # Fast Computation of Wasserstein Adversarial Examples
 
 ## Instructions for running the code
-Development environment: PyTorch 1.3.1 (see requirement.txt for detail)
+Dependency: PyTorch 1.5.1 with CUDA 10.2, scipy 1.5.0, and advertorch
 
 To run the procedure, it is required to install the sparse tensor package by the following:
 ```

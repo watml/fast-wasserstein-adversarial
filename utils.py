@@ -5,11 +5,8 @@ import numpy as np
 
 import torch
 
-import argparse
-
-
 def str2bool(x):
-    return bool(x)
+    return bool(int(x))
 
 
 def str_or_none(x):
@@ -22,42 +19,6 @@ def int_or_none(x):
 
 def float_or_none(x):
     return None if x == "None" else float(x)
-
-
-def get_test_parser():
-    parser = argparse.ArgumentParser(add_help=False)
-
-    parser.add_argument('--dataset', type=str, default='MNIST')
-    # parser.add_argument('--checkpoint', type=str, default='mnist_vanilla')
-    # change of argument: now checkpoint should be the model path
-    parser.add_argument('--checkpoint', type=str, default='mnist_vanilla')
-
-    parser.add_argument('--batch_size', type=int, default=20)
-    parser.add_argument('--num_batch', type=int_or_none, default=5)
-
-    parser.add_argument('--save_img_loc', type=str_or_none, default=None)
-    parser.add_argument('--save_info_loc', type=str_or_none, default=None)
-
-    parser.add_argument('--seed', type=int, default=0)
-
-    parser.add_argument('--debug', type=str2bool, default=0)
-
-    parser.add_argument('--benchmark', type=str2bool, default=False)
-
-    return parser
-
-
-def get_wasserstein_attack_parser():
-    parser = argparse.ArgumentParser(parents=[get_test_parser()], add_help=False)
-
-    parser.add_argument('--eps', type=float, default=0.5, help='the perturbation size')
-    parser.add_argument('--kernel_size', type=int_or_none, default=5)
-
-    parser.add_argument('--nb_iter', type=int, default=20, help='number of gradient iterations')
-
-    parser.add_argument('--postprocess', type=str2bool, default=False)
-
-    return parser
 
 
 def set_seed(seed):
@@ -82,7 +43,7 @@ def test(net, loader, device, attacker, num_batch, save_img_loc=None):
         adv_data = attacker.perturb(cln_data, target)
 
         if adv_data is None:
-            break
+            assert 0
 
         with torch.no_grad():
             output = net(adv_data)
@@ -93,12 +54,11 @@ def test(net, loader, device, attacker, num_batch, save_img_loc=None):
         total += target.size(0)
 
         print("****************************************************************")
-        print("batch idx: {:4d} num_batch: {:4d} Acc: {:.3f}% ({:5d} / {:5d})"
-              .format(batch_idx + 1,
-                      len(loader),
-                      100. * correct / total,
-                      correct,
-                      total))
+        print("batch idx: {:4d} num_batch: {:4d} acc: {:.3f}% ({:5d} / {:5d})".format(batch_idx + 1,
+                                                                                      len(loader),
+                                                                                      100. * correct / total,
+                                                                                      correct,
+                                                                                      total))
         print("****************************************************************")
 
         if save_img_loc is not None:
