@@ -51,28 +51,13 @@ def display_image(ax, img, label, loc, fontsize=15):
 def display_perturbation(ax, delta, propress=lambda x: x):
     display_label(ax, None, None)
 
-    # delta[np.abs(delta) > 0.16] = 0.
-
-    # yy = np.percentile(delta, 85)
-    # delta[delta > yy] = 1.
-
-    # xx = np.percentile(delta, 10)
-    # delta[delta < xx] = 0.
-
     xmin = delta.min()
     xmax = delta.max()
 
-    # delta = (delta - xmin) / ((xmax - xmin) + 0.000001)
-    delta = (delta - xmin) / (xmax - xmin)
+    delta = (delta - xmin) / ((xmax - xmin) + 1e-30)
+    # delta = (delta - xmin) / (xmax - xmin)
 
     delta = propress(delta)
-    # xmin = delta.min()
-    # xmax = delta.max()
-
-    # delta = (delta - xmin) / (xmax - xmin)
-    # delta[:, :, 0] = equalize_hist(delta[:, :, 0])
-    # delta[:, :, 1] = equalize_hist(delta[:, :, 1])
-    # delta[:, :, 2] = equalize_hist(delta[:, :, 2])
 
     if len(delta.shape) == 2:
         ax.imshow(delta, cmap='gray')
@@ -138,7 +123,8 @@ def plot_linf_vs_wasserstein():
 
             display_image(axes[row_idx, i],
                           np2img(adv_imgs[index]),
-                          r"$\epsilon={:4.2f}$, {:d}".format(eps, int(classes[predictions[index]])),
+                          # r"$\epsilon={:4.2f}$, {:d}".format(eps, int(classes[predictions[index]])),
+                          r"$\epsilon={:4.2f}$".format(eps),
                           loc='top',
                           fontsize=14)
 
@@ -177,34 +163,16 @@ def plot_imagenet_comparison():
 
     cln_imgs, labels, adv_imgs, predictions = torch.load(lst_files[0])
 
-    fig, ax = plt.subplots(figsize=(1 / 0.8, 1))
-    display_image(ax, np2img(cln_imgs[index]), classes[labels[index]], loc='left')
+    fig, ax = plt.subplots(figsize=(5 / 0.8, 5))
+    display_image(ax, np2img(cln_imgs[index]), classes[labels[index]], loc='left', fontsize=75)
 
     fig.subplots_adjust(hspace=0.0, wspace=0.0)
     fig.subplots_adjust(left=0.2, right=1.0, top=1.0, bottom=0.0)
 
-    # def plot(lst_imgs, lst_predictions=None, perturbation=False, figsize=(1, 1), nrows=None, ncols=None, propress=lambda x: x):
-    #     num_imgs = len(lst_imgs)
-
-    #     if nrows is None and ncols is None:
-    #         fig, axes = plt.subplots(figsize=figsize, nrows=num_imgs, ncols=1)
-    #     else:
-    #         fig, axes = plt.subplots(figsize=figsize, nrows=nrows, ncols=ncols)
-
-    #     for i in range(num_imgs):
-    #         if perturbation:
-    #             display_perturbation(axes[i], lst_imgs[i], propress)
-    #         else:
-    #             display_image(axes[i],
-    #                           lst_imgs[i],
-    #                           classes[lst_predictions[i]],
-    #                           loc='right')
-    #     return fig
-
     def plot_perturbation(lst_imgs, title, propress=lambda x: x):
         num_imgs = len(lst_imgs)
         for i in range(num_imgs):
-            fig = plt.figure("{}-{:d}".format(title, i), figsize=(1, 1))
+            fig = plt.figure("{}-{:d}".format(title, i), figsize=(5, 5))
             ax = fig.add_subplot(111)
             display_perturbation(ax, lst_imgs[i], propress)
 
@@ -214,12 +182,13 @@ def plot_imagenet_comparison():
     def plot_adv_imgs(lst_imgs, lst_perturbations, title):
         num_imgs = len(lst_imgs)
         for i in range(num_imgs):
-            fig = plt.figure("{}-{:d}".format(title, i), figsize=(1 / 0.8, 1))
+            fig = plt.figure("{}-{:d}".format(title, i), figsize=(5 / 0.8, 5))
             ax = fig.add_subplot(111)
             display_image(ax,
                           lst_imgs[i],
                           classes[lst_predictions[i]],
-                          loc='right')
+                          loc='right',
+                          fontsize=75)
 
             fig.subplots_adjust(hspace=0.0, wspace=0.0)
             fig.subplots_adjust(left=0.0, right=0.8, top=1.0, bottom=0.0)
@@ -263,11 +232,12 @@ def plot_mnist_cifar_comparision():
 
     for dataset in lst_dataset:
         num_methods = len(lst_pattern)
-        num_imgs = 10
+        num_imgs = 4
 
         classes = eval(dataset + '_classes')
 
-        fig = plt.figure(figsize=(2 * num_methods + 1, (num_imgs + 0.31 * (num_imgs - 1)) / 0.98))
+        # fig = plt.figure(figsize=(2 * num_methods + 1, (num_imgs + 0.31 * (num_imgs - 1)) / 0.98))
+        fig = plt.figure(figsize=(2 * num_methods + 1, (num_imgs + 0.31 * (num_imgs - 1)) / 0.94))
         gs = fig.add_gridspec(nrows=num_imgs, ncols=2 * num_methods + 1)
 
         def set_method_name(ax, name):
@@ -277,39 +247,26 @@ def plot_mnist_cifar_comparision():
             ax.set_yticklabels([])
             ax.set_xlabel(name, fontsize=10)
 
-        # set_method_name(fig.add_subplot(gs[num_imgs - 1, 1:3]), r'dual proj.')
-        # set_method_name(fig.add_subplot(gs[num_imgs - 1, 3:5]), r'dual LMO ($\gamma = 10^{-3}$)')
-        # set_method_name(fig.add_subplot(gs[num_imgs - 1, 5:7]), r'dual LMO ($\gamma = 10$)')
-        # set_method_name(fig.add_subplot(gs[num_imgs - 1, 7:9]), r'dual Sink. ($\gamma = 10^{-3}$)')
-
         for i in range(len(lst_pattern)):
             cln_imgs, labels, adv_imgs, predictions = torch.load("./adversarial_examples/" + lst_pattern[i].format(dataset))
             adv_imgs = np.clip(adv_imgs, a_min=0., a_max=1.)
 
             for j, index in enumerate(range(num_imgs)):
-                # if j < num_imgs:
                 ax = fig.add_subplot(gs[j, 2 * i + 1])
                 display_perturbation(ax, np2img(adv_imgs[index] - cln_imgs[index]))
 
                 ax = fig.add_subplot(gs[j, 2 * i + 2])
                 display_image(ax, np2img(adv_imgs[index]), label=classes[predictions[index]], loc='top', fontsize=20)
-                # if j == num_imgs:
-                # axes[j, i + 1] = axes.add_subplot(212)
 
                 ax = fig.add_subplot(gs[j, 0])
                 display_image(ax, np2img(cln_imgs[index]), label=classes[labels[index]], loc='top', fontsize=20)
 
                 if index == num_imgs - 1:
                     ax = fig.add_subplot(gs[j, 0])
-                    # display_label(ax, label='clean', loc='bottom', fontsize=15)
-
-        # display_label(fig.add_subplot(gs[num_imgs - 1, 1:3]), label='dual proj.', loc='bottom', fontsize=15)
-        # display_label(fig.add_subplot(gs[num_imgs - 1, 3:5]), label='dual LMO', loc='bottom', fontsize=15)
-        # display_label(fig.add_subplot(gs[num_imgs - 1, 5:7]), label='dual LMO', loc='bottom', fontsize=15)
-        # display_label(fig.add_subplot(gs[num_imgs - 1, 7:9]), label='proj. Sink.', loc='bottom', fontsize=15)
 
         fig.subplots_adjust(hspace=0.31, wspace=0.0)
-        fig.subplots_adjust(left=0.0, right=1.0, top=0.98, bottom=0.0)
+        # fig.subplots_adjust(left=0.0, right=1.0, top=0.98, bottom=0.0)
+        fig.subplots_adjust(left=0.0, right=1.0, top=0.94, bottom=0.0)
 
     plt.show()
 
