@@ -246,20 +246,13 @@ if __name__ == "__main__":
     print()
     print("expecting [0, 1, 2, 3, 4]")
 
-    # print("----------test golden section search-----------")
-    # maximizer = bgss(obj_fn,
-    #                  torch.zeros(5, dtype=torch.float),
-    #                  100 * torch.ones(5, dtype=torch.float),
-    #                  tol=1e-4,
-    #                  max_iter=20)
-
-    # print(maximizer)
-
     print("----------test bisection search-----------")
     maximizer = bisection_search(grad_fn,
                                  torch.zeros(5, dtype=torch.float),
                                  100 * torch.ones(5, dtype=torch.float),
-                                 tol=1e-4,
-                                 max_iter=20)
+                                 max_iter=50,
+                                 grad_tol=1e-6,
+                                 int_tol=1e-6,
+                                 )
 
     print(maximizer)
