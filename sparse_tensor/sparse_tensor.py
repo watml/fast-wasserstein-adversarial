@@ -33,13 +33,18 @@ if __name__ == "__main__":
     device = "cuda"
 
     print("initializing a dense cost matrix for 2 by 2 image...")
-    print(initialize_dense_cost(2, 2))
+    print("cost:", initialize_dense_cost(2, 2))
 
     print("initializing a sparse cost matrix for 3 by 3 image...")
-    print(initialize_sparse_cost(3, 3, 3, 100))
-    # print(initialize_sparse_cost(3, 3, 3).to_dense())
+    indices, values = initialize_sparse_cost(3, 3, 3, 1000)
+    print("indices:", indices)
+    print("values:", values)
 
     print("initializing a sparse coupling matrix for 3 by 3 image...")
-    X = torch.randn((2, 1, 3, 3), dtype=torch.float)
-    print(X.size())
-    print(initialize_sparse_coupling(X.view(2, 1, 3, 3), 1).to_dense())
+    X = torch.rand((2, 1, 3, 3), dtype=torch.float)
+    indices, values = initialize_sparse_coupling(X, 1)
+    print("indices:", indices)
+    print("values:", values)
+
+    pi = values.view(2, 1, 9, 1)
+    print(pi[0, 0])
