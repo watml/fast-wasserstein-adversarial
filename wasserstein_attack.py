@@ -129,7 +129,6 @@ class WassersteinAttack(Attack):
             pi[:, :, range(img_size), range(img_size)] = X.view(batch_size, c, img_size).to(self.device)
         else:
             indices, values = initialize_sparse_coupling(X.to("cpu"), self.kernel_size)
-            # self.coupling_indices = indices.to(self.device)
             pi = values.view(batch_size, c, img_size, self.kernel_size ** 2).to(self.device)
 
         return pi
@@ -177,14 +176,12 @@ def test_cost_initialization():
                                        loss_fn=lambda x: x,
                                        eps=0.5,
                                        kernel_size=None,
-                                       nb_iter=40,
                                        device="cuda")
 
     sparse_attacker = WassersteinAttack(predict=lambda x: x,
                                         loss_fn=lambda x: x,
                                         eps=0.5,
                                         kernel_size=7,
-                                        nb_iter=40,
                                         device="cuda")
 
     X = torch.zeros((5, 3, 28, 28), dtype=torch.float, device="cuda")
@@ -209,18 +206,16 @@ def test_coupling_initialization():
                                         loss_fn=lambda x: x,
                                         eps=0.5,
                                         kernel_size=7,
-                                        nb_iter=40,
                                         device="cuda")
 
     X = torch.rand((5, 3, 28, 28), dtype=torch.float, device="cuda")
 
     pi = sparse_attacker.initialize_coupling(X)
-    sparse_pi = pi if sparse_attacker.kernel_size is None else sparse_attacker.dense2sparse(pi, X)
 
-    batch_size, c, h, w = X.size()
+    sparse_attacker.check_marginal_constraint(pi, X, tol=1e-6, verbose=True)
 
-    print((torch.sparse.sum(sparse_pi, dim=2).to_dense().view(batch_size, c, h, w) - X).abs().sum())
-    print((torch.sparse.sum(sparse_pi, dim=3).to_dense().view(batch_size, c, h, w) - X).abs().sum())
+    adv = sparse_attacker.coupling2adversarial(pi, X)
+    print((adv - X).abs().sum().item())
 
 
 def gradient_checking():
@@ -228,15 +223,12 @@ def gradient_checking():
                                         loss_fn=lambda x: x,
                                         eps=0.5,
                                         kernel_size=5,
-                                        nb_iter=40,
                                         device="cuda")
 
     X = torch.randn((2, 3, 28, 28), dtype=torch.float, device="cuda")
 
     pi = sparse_attacker.initialize_coupling(X).clone().double().requires_grad_(True)
     sparse_attacker.initialize_cost(X, inf=10000)
-
-    # print(sparse_attacker.dense2sparse(pi, X).to_dense())
 
     input = (pi, X.size(), sparse_attacker.forward_idx, sparse_attacker.backward_idx)
 
@@ -246,9 +238,6 @@ def gradient_checking():
 
     loss = (Coulping2adversarial.apply(*input) * torch.randn(X.size(), dtype=torch.float, device="cuda")).sum()
     loss.backward()
-
-    # print("pi.grad")
-    # print(pi.grad)
 
 if __name__ == "__main__":
     # test_cost_initialization()
