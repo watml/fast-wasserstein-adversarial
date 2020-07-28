@@ -23,13 +23,11 @@ def train(model, loader, device, lr, epoch, attacker):
         for batch_idx, (cln_data, target) in enumerate(loader):
             cln_data, target = cln_data.to(device), target.to(device)
 
-            # model.eval()
             for param in model.parameters():
                 param.requires_grad = False
 
             adv_data = attacker.perturb(cln_data, target)
 
-            # model.train()
             for param in model.parameters():
                 param.requires_grad = True
 
@@ -52,20 +50,16 @@ def train(model, loader, device, lr, epoch, attacker):
 if __name__ == "__main__":
     import argparse
 
-    # parser = argparse.ArgumentParser(parents=[get_wasserstein_attack_parser()])
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--dataset', type=str)
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--lr', type=float, default=0.01)
     parser.add_argument('--epoch', type=int, default=20)
-    parser.add_argument('--parallel', type=int, default=1)
-
 
     parser.add_argument('--attack', type=str)
     parser.add_argument('--eps', type=float)
     parser.add_argument('--nb_iter', type=int, default=40, help='number of attack iterations')
-
 
     parser.add_argument('--resume', type=int, default=0)
     parser.add_argument('--save_model_loc', type=str, default=None)
@@ -83,10 +77,6 @@ if __name__ == "__main__":
 
     net = str2model(path=args.save_model_loc, dataset=args.dataset, pretrained=args.resume).eval().to(device)
 
-    if args.parallel:
-        print("visible GPUs: {:d}".format(torch.cuda.device_count()))
-        net = nn.DataParallel(net)
-
     if args.attack == "frank":
         attacker = FrankWolfe(predict=lambda x: net(normalize(x)),
                               loss_fn=nn.CrossEntropyLoss(reduction="sum"),
@@ -98,8 +88,6 @@ if __name__ == "__main__":
                               grad_tol=1e-4,
                               int_tol=1e-4,
                               device=device,
-                              clip_min=0., clip_max=1.,
-                              clipping=False,
                               postprocess=False,
                               verbose=False)
     else:

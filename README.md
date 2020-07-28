@@ -1,4 +1,4 @@
-# Fast Computation of Wasserstein Adversarial Examples
+# Stronger and Faster Wasserstein Adversarial Attacks 
 
 ## Instructions for running the code
 Dependency: PyTorch 1.5.1 with CUDA 10.2, scipy 1.5.0, and advertorch 0.2.3
