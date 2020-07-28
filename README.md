@@ -22,3 +22,8 @@ Checkout the following bash script for adversarial training using Frank-Wolfe:
 ```
 bash bash/train.sh
 ```
+
+Checkout the following bash script for model clean accuracy and lp adversarial attacks:
+```
+bash bash/test.sh
+```
