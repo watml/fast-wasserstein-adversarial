@@ -11,7 +11,7 @@ from utils import _check_marginal_constraint
 from utils import _check_transport_cost
 
 
-class Coulping2adversarial(torch.autograd.Function):
+class SumColumn(torch.autograd.Function):
     @staticmethod
     def forward(ctx, pi, size, forward_idx, backward_idx):
         ctx.save_for_backward(pi, forward_idx, backward_idx)
@@ -140,8 +140,7 @@ class WassersteinAttack(Attack):
         if self.kernel_size is None:
             return pi.sum(dim=2).view(batch_size, c, h, w)
         else:
-            # return torch.sparse.sum(self.dense2sparse(pi, X), dim=2).to_dense().view(batch_size, c, h, w)
-            return Coulping2adversarial.apply(pi, X.size(), self.forward_idx, self.backward_idx)
+            return SumColumn.apply(pi, X.size(), self.forward_idx, self.backward_idx)
 
     def check_nonnegativity(self, pi, tol=1e-4, verbose=False):
         _check_nonnegativity(pi=pi, tol=tol, verbose=verbose)
@@ -233,10 +232,10 @@ def gradient_checking():
     input = (pi, X.size(), sparse_attacker.forward_idx, sparse_attacker.backward_idx)
 
     from torch.autograd import gradcheck
-    test = gradcheck(lambda x, y, z, w: Coulping2adversarial.apply(x, y, z, w).sum(), input, eps=1e-6, atol=1e-4)
+    test = gradcheck(lambda x, y, z, w: SumColumn.apply(x, y, z, w).sum(), input, eps=1e-6, atol=1e-4)
     print(test)
 
-    loss = (Coulping2adversarial.apply(*input) * torch.randn(X.size(), dtype=torch.float, device="cuda")).sum()
+    loss = (SumColumn.apply(*input) * torch.randn(X.size(), dtype=torch.float, device="cuda")).sum()
     loss.backward()
 
 if __name__ == "__main__":

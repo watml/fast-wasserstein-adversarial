@@ -1,5 +1,11 @@
 # Stronger and Faster Wasserstein Adversarial Attacks 
 
+Code for "Strong and Faster Wasserstein Adversarial Attacks", appeared in ICML 2020. See the arXiv version [here][paper]. This repository contains implementations of our Wasserstein adversarial attacks and pretrained robust models.
+Our implementation of the projection operator and the linear minimization oracle for Wasserstein constrained can be of independent interest.
+
+[paper]: https://arxiv.org/abs/2008.02883
+
+
 ## Instructions for running the code
 Dependency: PyTorch 1.5.1 with CUDA 10.2, scipy 1.5.0, and advertorch 0.2.3
 

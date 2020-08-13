@@ -12,7 +12,7 @@ def entr_support_func(G, X, cost, inf, eps, gamma, dual_max_iter, grad_tol, int_
         s.t. pi 1 = x, pi >= 0, <C, pi> <= eps
     Equivalently, compute min_pi <pi, -G> - gamma * entropy(pi)
     Args:
-        G: constant in the objective function
+        G: constant in the objective function. If G is gradient, calling this subroutine in Frank-Wolfe will maximize the objective
         X: constant for the marginal constraint
         cost : constant for transportation constraint
         eps: constant for transportation constraint
