@@ -1,7 +1,7 @@
 # Stronger and Faster Wasserstein Adversarial Attacks 
 
 Code for [Stronger and Faster Wasserstein Adversarial Attacks][paper], appeared in ICML 2020. This repository contains the implementation of our Wasserstein adversarial attacks and pretrained robust models.
-The implementation of the projection operator and the linear minimization oracle for Wasserstein constrained can be of independent interest.
+The implementation of the projection operator and the linear minimization oracle for Wasserstein constraint can be of independent interest.
 
 [paper]: https://arxiv.org/abs/2008.02883
 
