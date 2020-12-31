@@ -22,6 +22,8 @@ bash bash/test_sinkhorn.sh             # projected Sinkhorn
 bash bash/test_projected_gradient.sh   # PGD with dual projection
 bash bash/test_frank_wolfe.sh          # Frank-Wolfe with dual LMO
 ```
+You may want to switch to the option `download=True` in the Line 111 and 124 in `data.py` for the *first* run.
+
 The folder `./checkpoints` stores all pretrained models. The names of the checkpoints indicate their training methods. For examples, `mnist_vanilla.pth` and `mnist_adv_training.pth` are pretrained  models directly taken from Wong et al., 2019. `mnist_adv_training_attack-frank_eps-0.3.pth` is a model adversarially trained by Frank-Wolfe using epsilon=0.3.
 
 Checkout the following bash script for adversarial training using Frank-Wolfe:
