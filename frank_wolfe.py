@@ -33,10 +33,11 @@ class FrankWolfe(WassersteinAttack):
         self.dual_max_iter = dual_max_iter
         self.grad_tol = grad_tol
         self.int_tol = int_tol
+        self.lst_t_acc = []  # target accuracy
 
         self.inf = 1000000
 
-    def perturb(self, X, y):
+    def perturb(self, X, y, target=None):
         batch_size, c, h, w = X.size()
 
         self.initialize_cost(X, inf=self.inf)
@@ -47,16 +48,22 @@ class FrankWolfe(WassersteinAttack):
             adv_example = self.coupling2adversarial(pi, X)
             scores = self.predict(adv_example.clamp(min=self.clip_min, max=self.clip_max))
 
-            loss = self.loss_fn(scores, y)
+            loss = self.loss_fn(scores, y) if target is None else self.loss_fn(scores, target)
             loss.backward()
 
             with torch.no_grad():
                 self.lst_loss.append(loss.item())
                 self.lst_acc.append((scores.max(dim=1)[1] == y).sum().item())
+                if target is not None:
+                    self.lst_t_acc.append((scores.max(dim=1)[1] == target).sum().item())
 
                 """Add a small constant to enhance numerical stability"""
                 pi.grad /= (tensor_norm(pi.grad, p='inf').view(batch_size, 1, 1, 1) + 1e-35)
-                assert (pi.grad == pi.grad).all() and (pi.grad != float('inf')).all() and (pi.grad != float('-inf')).all()
+                if target is not None:
+                    """In case of targeted attack reverse the gradient direction"""
+                    pi.grad *= -1
+                assert (pi.grad == pi.grad).all() and (pi.grad != float('inf')).all() and (
+                            pi.grad != float('-inf')).all()
 
                 start = torch.cuda.Event(enable_timing=True)
                 end = torch.cuda.Event(enable_timing=True)
@@ -84,9 +91,9 @@ class FrankWolfe(WassersteinAttack):
                     print("num of iters : {:4d}, ".format(t + 1),
                           "loss : {:12.6f}, ".format(loss.item()),
                           "acc : {:5.2f}%, ".format((scores.max(dim=1)[1] == y).sum().item() / batch_size * 100),
+                          "targeted acc : {:5.2f}%, ".format((scores.max(dim=1)[1] == target).sum().item() / batch_size * 100) if target is not None else "",
                           "dual iter : {:2d}, ".format(num_iter),
                           "per iter time : {:7.3f}ms".format(start.elapsed_time(end) / num_iter))
-
 
                 step = 2. / (t + 2)
                 pi += step * (optimal_pi - pi)
@@ -136,6 +143,7 @@ if __name__ == "__main__":
     parser.add_argument('--num_batch', type=int_or_none, default=5)
 
     parser.add_argument('--eps', type=float, default=0.5, help='the perturbation size')
+    parser.add_argument('--target', type=int, default=None, help='Target class for the targeted attack', required=False, nargs="?")
     parser.add_argument('--kernel_size', type=int_or_none, default=5)
 
     parser.add_argument('--nb_iter', type=int, default=20)
@@ -184,7 +192,8 @@ if __name__ == "__main__":
                device=device,
                attacker=frank_wolfe,
                num_batch=args.num_batch,
-               save_img_loc=args.save_img_loc)
+               save_img_loc=args.save_img_loc,
+               target=args.target)
 
     frank_wolfe.print_info(acc)
 
