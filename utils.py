@@ -28,7 +28,7 @@ def set_seed(seed):
     torch.manual_seed(seed)
 
 
-def test(net, loader, device, attacker, num_batch, save_img_loc=None):
+def test(net, loader, device, attacker, num_batch, target=None, save_img_loc=None):
     correct = 0
     total = 0
 
@@ -36,12 +36,23 @@ def test(net, loader, device, attacker, num_batch, save_img_loc=None):
         save_cln_img_list = []
         save_adv_img_list = []
         save_labels_list = []
+        save_targets_list = []
         save_predictions_list = []
 
-    for batch_idx, (cln_data, target) in enumerate(loader):
-        cln_data, target = cln_data.to(device), target.to(device)
+    for batch_idx, (cln_data, y) in enumerate(loader):
+        cln_data, y = cln_data.to(device), y.to(device)
 
-        adv_data = attacker.perturb(cln_data, target)
+        if target is not None:
+            target = torch.tensor([target] * y.shape[0]).to(device)
+            try:
+                adv_data = attacker.perturb(cln_data, y, target=target)
+            except TypeError as err:
+                if str(err).startswith("\'target\' is an invalid keyword argument"):
+                    raise NotImplementedError("Targeted setup is not implemented for the attack, please override the perturb function of the attack!")
+                else:
+                    raise err
+        else:
+            adv_data = attacker.perturb(cln_data, y)
 
         if adv_data is None:
             assert 0
@@ -51,8 +62,8 @@ def test(net, loader, device, attacker, num_batch, save_img_loc=None):
 
         prediction = output.max(dim=1)[1]
 
-        correct += (prediction == target).sum().item()
-        total += target.size(0)
+        correct += (prediction == y).sum().item()
+        total += y.size(0)
 
         print("****************************************************************")
         print("batch idx: {:4d} num_batch: {:4d} acc: {:.3f}% ({:5d} / {:5d})".format(batch_idx + 1,
@@ -65,7 +76,9 @@ def test(net, loader, device, attacker, num_batch, save_img_loc=None):
         if save_img_loc is not None:
             save_cln_img_list.append(cln_data.clone().detach().cpu().numpy())
             save_adv_img_list.append(adv_data.clone().detach().cpu().numpy())
-            save_labels_list.append(target.clone().detach().cpu().numpy())
+            save_labels_list.append(y.clone().detach().cpu().numpy())
+            if target is not None:
+                save_targets_list.append(target.clone().detach().cpu().numpy())
             save_predictions_list.append(prediction.clone().detach().cpu().numpy())
 
         if num_batch is not None and batch_idx + 1 >= num_batch:
@@ -79,6 +92,10 @@ def test(net, loader, device, attacker, num_batch, save_img_loc=None):
         save_adv_img_array = np.concatenate(save_adv_img_list, axis=0)
         save_labels_array = np.concatenate(save_labels_list, axis=0)
         save_predictions_array = np.concatenate(save_predictions_list, axis=0)
+        if target is not None:
+            save_targets_array = np.concatenate(save_targets_list, axis=0)
+            torch.save((save_cln_img_array, save_labels_array, save_targets_array, save_adv_img_array, save_predictions_array), save_img_loc)
+            return 100.0 * correct / total
         torch.save((save_cln_img_array, save_labels_array, save_adv_img_array, save_predictions_array), save_img_loc)
 
     return 100.0 * correct / total

@@ -6,6 +6,7 @@ ckpt=mnist_vanilla
 # ckpt=mnist_adv_training_attack-frank_eps-0.3
 batch=100
 num_batch=1
+# target=1
 eps=0.5
 nb_iter=300
 postprocess=0
@@ -35,6 +36,7 @@ python frank_wolfe.py --dataset $dataset \
                       --batch_size $batch \
                       --num_batch $num_batch \
                       --eps $eps \
+                      --target $target \
                       --kernel_size 5 \
                       --nb_iter $nb_iter \
                       --entrp_gamma 1e-3 \
